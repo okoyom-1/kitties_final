@@ -144,10 +144,98 @@ test_dataloader_augmented = DataLoader(test_data_augmented,
 
 print(train_dataloader_augmented, test_dataloader_augmented)
 
+# создание классификатора pytorch
+class ImageClassifier(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv_layer_1 = nn.Sequential(
+          nn.Conv2d(3, 64, 3, padding=1),
+          nn.ReLU(),
+          nn.BatchNorm2d(64),
+          nn.MaxPool2d(2))
+        self.conv_layer_2 = nn.Sequential(
+          nn.Conv2d(64, 512, 3, padding=1),
+          nn.ReLU(),
+          nn.BatchNorm2d(512),
+          nn.MaxPool2d(2))
+        self.conv_layer_3 = nn.Sequential(
+          nn.Conv2d(512, 512, kernel_size=3, padding=1),
+          nn.ReLU(),
+          nn.BatchNorm2d(512),
+          nn.MaxPool2d(2)) 
+        self.classifier = nn.Sequential(
+          nn.Flatten(),
+          nn.Linear(in_features=512*3*3, out_features=2))
+    def forward(self, x: torch.Tensor):
+        x = self.conv_layer_1(x)
+        x = self.conv_layer_2(x)
+        x = self.conv_layer_3(x)
+        x = self.conv_layer_3(x)
+        x = self.conv_layer_3(x)
+        x = self.conv_layer_3(x)
+        x = self.classifier(x)
+        return x
+# Создаем новую модель машинного обучения.
+model = ImageClassifier().to(device)
+
+# 1. получить пачку картинок из объекта DataLoader
+img_batch, label_batch = next(iter(train_dataloader_augmented))
+
+# 2. взять из этой пачки картинку и адаптирвоать ее под модель
+img_single, label_single = img_batch[0].unsqueeze(dim=0), label_batch[0]
+print(f"Адаптированная картинка: {img_single.shape}\n")
+
+# 3. применить модель к картинке
+model.eval()
+with torch.inference_mode():
+    pred = model(img_single.to(device))
+
+# 4. вывести результаты
+print(f"Логиты:\n{pred}\n")
+print(f"Output prediction probabilities:\n{torch.softmax(pred, dim=1)}\n")
+print(f"Output prediction label:\n{torch.argmax(torch.softmax(pred, dim=1), dim=1)}\n")
+print(f"Actual label:\n{label_single}")
 
 
+def train_step(model: torch.nn.Module, 
+               dataloader: torch.utils.data.DataLoader, 
+               loss_fn: torch.nn.Module, 
+               optimizer: torch.optim.Optimizer):
+    # Включение режима обучения модели
+    model.train()
+    
+    # Задать начальное состояние метрики
+    train_loss, train_acc = 0, 0
+    
+    # Пройти по каждой пачке данных
+    for batch, (X, y) in enumerate(dataloader):
+        # Отправить картинки на CPU или GPU
+        X, y = X.to(device), y.to(device)
+        
+        # 1. Шаг вперед
+        y_pred = model(X)
 
+        # 2. Calculate  and accumulate loss
+        loss = loss_fn(y_pred, y)
+        train_loss += loss.item() 
 
+        # 3. Optimizer zero grad
+        optimizer.zero_grad()
+
+        # 4. Loss backward
+        loss.backward()
+
+        # 5. Optimizer step
+        optimizer.step()
+
+        # Calculate and accumulate accuracy metric across all batches
+        y_pred_class = torch.argmax(torch.softmax(y_pred, dim=1), dim=1)
+        train_acc += (y_pred_class == y).sum().item()/len(y_pred)
+
+    # Adjust metrics to get average loss and accuracy per batch 
+    train_loss = train_loss / len(dataloader)
+    train_acc = train_acc / len(dataloader)
+    return train_loss, train_acc
 
 
 
